@@ -32,6 +32,75 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.abs
 
+
+data class ToppingPieceAnimation(
+    val id: Int,
+    val targetX: Float,
+    val targetY: Float,
+    val rotation: Float,
+    val resourceIndex: Int,
+    val startDelay: Long,
+    val size: Float = 1f
+)
+
+// Enhanced Topping Animation State
+data class ToppingAnimationState(
+    val topping: Topping,
+    val pieces: List<ToppingPieceAnimation>,
+    val isAnimating: Boolean = true
+)
+
+// Function to generate distributed positions for topping pieces
+fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
+    val pieceCount = when (topping.id) {
+        "basil" -> Random.nextInt(6, 10)
+        "mushroom" -> Random.nextInt(5, 8)
+        "onion" -> Random.nextInt(8, 12)
+        "sausage" -> Random.nextInt(6, 9)
+        "broccoli" -> Random.nextInt(5, 8)
+        else -> 8
+    }
+
+    val positions = mutableListOf<Pair<Float, Float>>()
+    val minDistance = 35f // Minimum distance between pieces
+
+    return List(pieceCount) { index ->
+        var position: Pair<Float, Float>
+        var attempts = 0
+
+        // Try to find a position that doesn't overlap too much
+        do {
+            val angle = Random.nextFloat() * 360f
+            val radius = Random.nextFloat() * 70f + 10f // 10-80 radius
+            val x = radius * kotlin.math.cos(Math.toRadians(angle.toDouble())).toFloat()
+            val y = radius * kotlin.math.sin(Math.toRadians(angle.toDouble())).toFloat()
+            position = x to y
+            attempts++
+        } while (
+            attempts < 50 &&
+            positions.any {
+                val distance = kotlin.math.sqrt(
+                    (it.first - position.first) * (it.first - position.first) +
+                            (it.second - position.second) * (it.second - position.second)
+                )
+                distance < minDistance
+            }
+        )
+
+        positions.add(position)
+
+        ToppingPieceAnimation(
+            id = index,
+            targetX = position.first,
+            targetY = position.second,
+            rotation = Random.nextFloat() * 360f,
+            resourceIndex = Random.nextInt(10) + 1,
+            startDelay = index * 50L, // Cascade effect
+            size = Random.nextFloat() * 0.3f + 0.85f
+        )
+    }
+}
+
 data class Topping(
     val id: String,
     val name: String,
@@ -353,21 +422,26 @@ fun PizzaOrderingScreen() {
                         onClick = {
                             if (selectedToppings.contains(topping)) {
                                 selectedToppings = selectedToppings - topping
+                                animatingToppings = animatingToppings.filter { it.topping != topping }
                             } else {
                                 selectedToppings = selectedToppings + topping
-                                // Trigger falling animation
+                                // Generate positions for all pieces
+                                val pieces = generateToppingPositions(topping)
+                                val animationState = ToppingAnimationState(
+                                    topping = topping,
+                                    pieces = pieces,
+                                    isAnimating = true
+                                )
+                                animatingToppings = animatingToppings + animationState
+
+                                // Remove from animating list after animation completes
                                 scope.launch {
-                                    animatingToppings =
-                                        animatingToppings + ToppingAnimationState(topping)
-                                    delay(50)
+                                    delay(1500) // Wait for all pieces to fall
                                     animatingToppings = animatingToppings.map {
                                         if (it.topping == topping) {
-                                            it.copy(offsetY = 0f)
+                                            it.copy(isAnimating = false)
                                         } else it
                                     }
-                                    delay(1000)
-                                    animatingToppings =
-                                        animatingToppings.filter { it.topping != topping }
                                 }
                             }
                         }
@@ -419,114 +493,184 @@ fun PizzaOrderingScreen() {
     }
 }
 
-// Updated PizzaDisplay with separate plate and pizza
 @Composable
-fun PizzaDisplay(
+fun AnimatedToppingPiece(
+    topping: Topping,
+    pieceAnimation: ToppingPieceAnimation,
+    isAnimating: Boolean
+) {
+    var hasStarted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isAnimating) {
+        if (isAnimating) {
+            delay(pieceAnimation.startDelay)
+            hasStarted = true
+        }
+    }
+
+    val offsetY by animateFloatAsState(
+        targetValue = if (hasStarted) 0f else -500f,
+        animationSpec = spring(
+            dampingRatio = 0.6f,
+            stiffness = 200f
+        ),
+        label = "pieceFall"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (hasStarted) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = 300f
+        ),
+        label = "pieceScale"
+    )
+
+    if (hasStarted || !isAnimating) {
+        Image(
+            painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
+            contentDescription = null,
+            modifier = Modifier
+                .size(35.dp * pieceAnimation.size)
+                .graphicsLayer {
+                    translationX = pieceAnimation.targetX
+                    translationY = pieceAnimation.targetY + offsetY
+                    rotationZ = pieceAnimation.rotation
+                    scaleX = scale * pieceAnimation.size
+                    scaleY = scale * pieceAnimation.size
+                    alpha = if (offsetY < -400f) 0f else 1f
+                }
+        )
+    }
+}
+
+@Composable
+fun PizzaOnly(
     pizza: Pizza,
     size: PizzaSize,
     selectedToppings: Set<Topping>,
     animatingToppings: List<ToppingAnimationState>,
-    isAnimatingSwitch: Boolean,
-    horizontalOffset: Float = 0f
+    horizontalOffset: Float,
+    alpha: Float
 ) {
+    val pizzaScale by animateFloatAsState(
+        targetValue = size.scale,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = 300f
+        ),
+        label = "pizzaScale"
+    )
+
     Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.size(250.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                translationX = horizontalOffset
+                this.alpha = alpha
+            }
+            .scale(pizzaScale),
+        contentAlignment = Alignment.Center
     ) {
-        // Shadow - fixed position
-        Box(
-            modifier = Modifier
-                .size(220.dp)
-                .offset(y = 10.dp)
-                .background(
-                    brush = radialGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.15f),
-                            Color.Transparent
-                        ),
-                        radius = 200f
-                    )
-                )
-        )
-
-        // Plate - fixed position, never moves
+        // Pizza Base
         Image(
-            painter = painterResource(R.drawable.plate),
+            painter = painterResource(pizza.baseImageRes),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
         )
 
-        // Pizza Container - this moves with swipe
-        Box(
-            modifier = Modifier
-                .fillMaxSize(0.8f)
-                .graphicsLayer {
-                    translationX = horizontalOffset
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            // Pizza Base
-            val pizzaScale by animateFloatAsState(
-                targetValue = size.scale,
-                animationSpec = spring(
-                    dampingRatio = 0.8f,
-                    stiffness = 300f
-                ),
-                label = "pizzaScale"
-            )
+        // Static Toppings (already placed)
+        selectedToppings.forEach { topping ->
+            val animatingState = animatingToppings.find { it.topping == topping }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .scale(pizzaScale),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(pizza.baseImageRes),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                )
-
-                // Static Toppings
-                selectedToppings.forEach { topping ->
-                    if (animatingToppings.none { it.topping == topping }) {
-                        repeat(8) { index ->
-                            ToppingPiece(
-                                topping = topping,
-                                index = index,
-                                size = 1f
-                            )
-                        }
-                    }
-                }
-
-                // Animating Toppings
-                animatingToppings.forEach { animState ->
-                    val offsetY by animateFloatAsState(
-                        targetValue = animState.offsetY,
-                        animationSpec = spring(
-                            dampingRatio = 0.6f,
-                            stiffness = 300f
-                        ),
-                        label = "toppingFall"
-                    )
-
-                    repeat(8) { index ->
-                        ToppingPiece(
-                            topping = animState.topping,
-                            index = index,
-                            size = 1f,
-                            animationOffsetY = offsetY,
-                            animationRotation = animState.rotation + index * 45f,
-                            animationScale = animState.scale
+            if (animatingState == null || !animatingState.isAnimating) {
+                // Show static pieces
+                val pieces = remember(topping) { generateToppingPositions(topping) }
+                pieces.forEach { piece ->
+                    key(topping.id, piece.id) {
+                        StaticToppingPiece(
+                            topping = topping,
+                            pieceAnimation = piece
                         )
                     }
                 }
             }
         }
+
+        // Animating Toppings
+        animatingToppings.filter { it.isAnimating }.forEach { animState ->
+            animState.pieces.forEach { piece ->
+                key(animState.topping.id, piece.id) {
+                    AnimatedToppingPiece(
+                        topping = animState.topping,
+                        pieceAnimation = piece,
+                        isAnimating = animState.isAnimating
+                    )
+                }
+            }
+        }
     }
+}
+
+fun generateGridBasedPositions(topping: Topping): List<ToppingPieceAnimation> {
+    val pieceCount = when (topping.id) {
+        "basil" -> Random.nextInt(6, 10)
+        "mushroom" -> Random.nextInt(5, 8)
+        "onion" -> Random.nextInt(8, 12)
+        "sausage" -> Random.nextInt(6, 9)
+        "broccoli" -> Random.nextInt(5, 8)
+        else -> 8
+    }
+
+    // Create a circular grid
+    val gridPoints = mutableListOf<Pair<Float, Float>>()
+    val rings = 3 // Number of concentric rings
+
+    for (ring in 1..rings) {
+        val radius = ring * 25f
+        val pointsInRing = ring * 4
+
+        for (i in 0 until pointsInRing) {
+            val angle = (i * 360f / pointsInRing) + Random.nextFloat() * 20f - 10f
+            val r = radius + Random.nextFloat() * 10f - 5f
+            val x = r * kotlin.math.cos(Math.toRadians(angle.toDouble())).toFloat()
+            val y = r * kotlin.math.sin(Math.toRadians(angle.toDouble())).toFloat()
+            gridPoints.add(x to y)
+        }
+    }
+
+    // Shuffle and take required number of points
+    return gridPoints.shuffled().take(pieceCount).mapIndexed { index, position ->
+        ToppingPieceAnimation(
+            id = index,
+            targetX = position.first,
+            targetY = position.second,
+            rotation = Random.nextFloat() * 360f,
+            resourceIndex = Random.nextInt(10) + 1,
+            startDelay = index * 30L,
+            size = Random.nextFloat() * 0.3f + 0.85f
+        )
+    }
+}
+
+@Composable
+fun StaticToppingPiece(
+    topping: Topping,
+    pieceAnimation: ToppingPieceAnimation
+) {
+    Image(
+        painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
+        contentDescription = null,
+        modifier = Modifier
+            .size(35.dp * pieceAnimation.size)
+            .graphicsLayer {
+                translationX = pieceAnimation.targetX
+                translationY = pieceAnimation.targetY
+                rotationZ = pieceAnimation.rotation
+            }
+    )
 }
 
 // Updated PizzaCarousel to handle only pizza movement
@@ -642,108 +786,6 @@ fun ToppingPiece(
     )
 }
 
-// Enhanced topping distribution system
-@Composable
-fun PizzaOnly(
-    pizza: Pizza,
-    size: PizzaSize,
-    selectedToppings: Set<Topping>,
-    animatingToppings: List<ToppingAnimationState>,
-    horizontalOffset: Float,
-    alpha: Float
-) {
-    val pizzaScale by animateFloatAsState(
-        targetValue = size.scale,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 300f
-        ),
-        label = "pizzaScale"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                translationX = horizontalOffset
-                this.alpha = alpha
-            }
-            .scale(pizzaScale),
-        contentAlignment = Alignment.Center
-    ) {
-        // Pizza Base
-        Image(
-            painter = painterResource(pizza.baseImageRes),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-        )
-
-        // Static Toppings with better distribution
-        selectedToppings.forEach { topping ->
-            if (animatingToppings.none { it.topping == topping }) {
-                // Generate different number of pieces based on topping type
-                val pieceCount = remember(topping) {
-                    when (topping.id) {
-                        "basil" -> Random.nextInt(6, 10)
-                        "mushroom" -> Random.nextInt(5, 8)
-                        "onion" -> Random.nextInt(8, 12)
-                        "sausage" -> Random.nextInt(6, 9)
-                        "broccoli" -> Random.nextInt(5, 8)
-                        else -> 8
-                    }
-                }
-
-                repeat(pieceCount) { index ->
-                    key(topping.id, index) { // Key to maintain stable identity
-                        ToppingPiece(
-                            topping = topping,
-                            index = index,
-                            size = 1f
-                        )
-                    }
-                }
-            }
-        }
-
-        // Animating Toppings
-        animatingToppings.forEach { animState ->
-            val offsetY by animateFloatAsState(
-                targetValue = animState.offsetY,
-                animationSpec = spring(
-                    dampingRatio = 0.6f,
-                    stiffness = 300f
-                ),
-                label = "toppingFall"
-            )
-
-            val pieceCount = remember(animState.topping) {
-                when (animState.topping.id) {
-                    "basil" -> Random.nextInt(6, 10)
-                    "mushroom" -> Random.nextInt(5, 8)
-                    "onion" -> Random.nextInt(8, 12)
-                    "sausage" -> Random.nextInt(6, 9)
-                    "broccoli" -> Random.nextInt(5, 8)
-                    else -> 8
-                }
-            }
-
-            repeat(pieceCount) { index ->
-                key(animState.topping.id, index) {
-                    ToppingPiece(
-                        topping = animState.topping,
-                        index = index,
-                        size = 1f,
-                        animationOffsetY = offsetY,
-                        animationRotation = animState.rotation,
-                        animationScale = animState.scale
-                    )
-                }
-            }
-        }
-    }
-}
 
 // Alternative: Create a more sophisticated topping distribution
 @Composable
@@ -794,14 +836,6 @@ fun DistributedToppingPiece(
     )
 }
 
-// Updated Topping Animation State with stable values
-data class ToppingAnimationState(
-    val topping: Topping,
-    val offsetY: Float = -500f,
-    val rotation: Float = 0f, // Remove random rotation from here
-    val offsetX: Float = 0f,
-    val scale: Float = 1f
-)
 
 @Composable
 fun SizeOption(
