@@ -1,6 +1,5 @@
 package com.ae.pizza_animation
 
-import androidx.compose.material3.ripple
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.pager.PagerState
@@ -13,7 +12,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.ui.graphics.Brush.Companion.radialGradient
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -29,7 +27,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +65,8 @@ fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
     }
 
     val positions = mutableListOf<Pair<Float, Float>>()
-    val minDistance = 35f // Minimum distance between pieces
+    val minDistance = 25f // Reduced minimum distance between pieces
+    val maxRadius = 50f // Reduced max radius to keep within plate
 
     return List(pieceCount) { index ->
         var position: Pair<Float, Float>
@@ -77,7 +75,7 @@ fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
         // Try to find a position that doesn't overlap too much
         do {
             val angle = Random.nextFloat() * 360f
-            val radius = Random.nextFloat() * 70f + 10f // 10-80 radius
+            val radius = Random.nextFloat() * maxRadius + 5f // 5-55 radius (within plate)
             val x = radius * kotlin.math.cos(Math.toRadians(angle.toDouble())).toFloat()
             val y = radius * kotlin.math.sin(Math.toRadians(angle.toDouble())).toFloat()
             position = x to y
@@ -101,8 +99,8 @@ fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
             targetY = position.second,
             rotation = Random.nextFloat() * 360f,
             resourceIndex = Random.nextInt(10) + 1,
-            startDelay = index * 50L, // Cascade effect
-            size = Random.nextFloat() * 0.3f + 0.85f
+            startDelay = index * 50L,
+            size = Random.nextFloat() * 0.2f + 0.8f // Slightly smaller pieces
         )
     }
 }
@@ -294,45 +292,6 @@ enum class PizzaSize(val scale: Float, val priceMultiplier: Double) {
 }
 
 @Composable
-fun PizzaIndicators(
-    pizzas: List<Pizza>,
-    currentIndex: Int
-) {
-    Row(
-        modifier = Modifier.padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        pizzas.forEachIndexed { index, _ ->
-            val width by animateDpAsState(
-                targetValue = if (index == currentIndex) 24.dp else 8.dp,
-                animationSpec = spring(
-                    dampingRatio = 0.8f,
-                    stiffness = 400f
-                ),
-                label = "indicatorWidth"
-            )
-
-            val color by animateColorAsState(
-                targetValue = if (index == currentIndex) Color.Black else Color.LightGray,
-                animationSpec = tween(200),
-                label = "indicatorColor"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(width = width, height = 8.dp)
-                    .background(
-                        color = color,
-                        shape = RoundedCornerShape(4.dp)
-                    )
-            )
-        }
-    }
-}
-
-
-
-@Composable
 fun SizeOption(
     size: PizzaSize,
     isSelected: Boolean,
@@ -443,7 +402,6 @@ fun PizzaOrderingScreen() {
                     modifier = Modifier.align(Alignment.Center)
                 )
 
-                // HorizontalPizzaPager (exactly like reference)
                 HorizontalPizzaPager(
                     state = pagerState,
                     pizzas = pizzas,
@@ -561,85 +519,6 @@ fun PizzaOrderingScreen() {
     }
 }
 
-// Enhanced ToppingOption with better animations and circular selection
-@Composable
-fun ToppingOption(
-    topping: Topping,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.7f,
-            stiffness = 300f
-        ),
-        label = "toppingScale"
-    )
-
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) Color.Black else Color(0xFFEEEEEE),
-        animationSpec = tween(200),
-        label = "borderColor"
-    )
-
-    Box(
-        modifier = Modifier
-            .size(80.dp)
-            .scale(scale)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) Color(0xFFF5F5F5) else Color.White)
-            .border(
-                width = if (isSelected) 2.dp else 1.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(topping.resourceGetter(1)),
-                contentDescription = topping.name,
-                modifier = Modifier.size(40.dp),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = topping.name,
-                fontSize = 10.sp,
-                color = if (isSelected) Color.Black else Color.Gray,
-                maxLines = 1
-            )
-        }
-
-        // Selection indicator - circular
-        AnimatedVisibility(
-            visible = isSelected,
-            enter = scaleIn() + fadeIn(),
-            exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .offset(x = 4.dp, y = (-4).dp)
-                    .background(Color.Black, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(Color.White, CircleShape)
-                )
-            }
-        }
-    }
-}
-
 
 @Composable
 fun DroppingSelectionElement(
@@ -708,9 +587,9 @@ fun HorizontalPizzaPager(
 
     val droppingAppearanceScale by animateFloatAsState(
         targetValue = when (pizzas[state.currentPage].size) {
-            PizzaSize.LARGE -> 0.9f
-            PizzaSize.MEDIUM -> 0.3f
-            PizzaSize.SMALL -> 0.2f
+            PizzaSize.LARGE -> 0.5f
+            PizzaSize.MEDIUM -> 0.4f
+            PizzaSize.SMALL -> 0.3f
         },
         label = "droppingScale"
     )
@@ -735,8 +614,8 @@ fun HorizontalPizzaPager(
 
                 pizzas[page].ingredients.forEach { dropping ->
                     dropping.ingredients.forEachIndexed { _, droppingImageRes ->
-                        val randomX = remember { Random.nextInt(-250, 250) }
-                        val randomY = remember { Random.nextInt(-250, 250) }
+                        val randomX = remember { Random.nextInt(-200, 200) }
+                        val randomY = remember { Random.nextInt(-200, 200) }
 
                         AnimatedVisibility(
                             visible = dropping.isSelected,
@@ -757,68 +636,6 @@ fun HorizontalPizzaPager(
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-fun EnhancedPizzaCarousel(
-    pagerState: PagerState,
-    pizzas: List<Pizza>,
-    selectedSize: PizzaSize,
-    selectedToppings: Set<Topping>,
-    animatingToppings: List<ToppingAnimationState>
-) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // Fixed plate and shadow
-        Box(
-            modifier = Modifier.size(250.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            // Shadow
-            Box(
-                modifier = Modifier
-                    .size(220.dp)
-                    .offset(y = 10.dp)
-                    .background(
-                        brush = radialGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = 0.15f),
-                                Color.Transparent
-                            ),
-                            radius = 200f
-                        )
-                    )
-            )
-
-            // Plate - always visible and fixed
-            Image(
-                painter = painterResource(R.drawable.plate),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // HorizontalPager for pizza navigation
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(0.8f)
-            ) { page ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    PizzaWithToppings(
-                        pizza = pizzas[page],
-                        size = selectedSize,
-                        selectedToppings = if (page == pagerState.currentPage) selectedToppings else emptySet(),
-                        animatingToppings = if (page == pagerState.currentPage) animatingToppings else emptyList()
-                    )
                 }
             }
         }
