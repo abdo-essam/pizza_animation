@@ -455,7 +455,7 @@ fun PizzaOrderingScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, bottom = 32.dp , top = 16.dp)
+                    .padding(start = 16.dp, bottom = 32.dp, top = 16.dp)
             ) {
                 Text(
                     text = "CUSTOMIZE YOUR PIZZA",
