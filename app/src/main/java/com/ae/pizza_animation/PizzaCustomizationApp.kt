@@ -293,7 +293,6 @@ enum class PizzaSize(val scale: Float, val priceMultiplier: Double) {
     LARGE(1.0f, 1.5)
 }
 
-// Pizza Indicators
 @Composable
 fun PizzaIndicators(
     pizzas: List<Pizza>,
@@ -386,21 +385,6 @@ fun SizeOption(
     }
 }
 
-
-
-@Composable
-fun PizzaSizeElement(
-    size: String,
-    modifier: Modifier = Modifier
-) {
-    Text(
-        text = size,
-        fontSize = 25.sp,
-        color = Color.Black,
-        modifier = modifier,
-        textAlign = TextAlign.Center
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -513,7 +497,7 @@ fun PizzaOrderingScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, bottom = 32.dp)
+                    .padding(start = 16.dp, bottom = 32.dp , top = 16.dp)
             ) {
                 Text(
                     text = "CUSTOMIZE YOUR PIZZA",
@@ -546,18 +530,12 @@ fun PizzaOrderingScreen() {
                         },
                         isSelected = dropping.isSelected,
                         droppingImage = dropping.image,
-                        modifier = Modifier.size(55.dp)
+                        modifier = Modifier.size(80.dp) // Changed from 55.dp to 80.dp to match ToppingOption
                     )
                 }
             }
 
             Spacer(Modifier.weight(1f))
-
-            // Pizza Type Indicators
-            PizzaIndicators(
-                pizzas = pizzas,
-                currentIndex = pagerState.currentPage
-            )
 
             // Add to Cart Button
             Button(
@@ -670,14 +648,8 @@ fun DroppingSelectionElement(
     droppingImage: Int,
     modifier: Modifier = Modifier
 ) {
-    val containerColor by animateColorAsState(
-        targetValue = if (isSelected) Color.Green.copy(alpha = 0.1f) else Color.Transparent,
-        animationSpec = tween(400),
-        label = "containerColor"
-    )
-
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.1f else 1f,
+        targetValue = if (isSelected) 1.05f else 1f,
         animationSpec = spring(
             dampingRatio = 0.7f,
             stiffness = 300f
@@ -685,52 +657,33 @@ fun DroppingSelectionElement(
         label = "droppingScale"
     )
 
-    val interactionSource = remember { MutableInteractionSource() }
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) Color.Black else Color(0xFFEEEEEE),
+        animationSpec = tween(200),
+        label = "borderColor"
+    )
 
     Box(
         modifier = modifier
+            .size(20.dp) // Fixed size like ToppingOption
             .scale(scale)
-            .background(containerColor, shape = CircleShape)
+            .padding(4.dp)
+            .clip(RoundedCornerShape(12.dp)) // Rounded rectangle like ToppingOption
+            .background(if (isSelected) Color(0xFFF5F5F5) else Color.White) // Same background colors
             .border(
-                width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) Color.Green else Color.Transparent,
-                shape = CircleShape
+                width = if (isSelected) 2.dp else 1.dp, // Same border logic
+                color = borderColor,
+                shape = RoundedCornerShape(12.dp)
             )
+            .clickable { onDroppingClick() },
+        contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(droppingImage),
-            contentDescription = "Pizza Dropping item",
-            modifier = Modifier
-                .align(Alignment.Center)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = ripple(bounded = false), // Fixed: Use Material3 ripple
-                    onClick = onDroppingClick
-                )
-                .size(35.dp)
+            painter = painterResource(droppingImage), // Use painterResource like ToppingOption
+            contentDescription = "Pizza topping item",
+            modifier = Modifier.size(50.dp), // Same image size as ToppingOption
+            contentScale = ContentScale.Fit // Same content scale
         )
-
-        // Selection indicator dot
-        AnimatedVisibility(
-            visible = isSelected,
-            enter = scaleIn() + fadeIn(),
-            exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .offset(x = 2.dp, y = (-2).dp)
-                    .background(Color.Green, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(Color.White, CircleShape)
-                )
-            }
-        }
     }
 }
 
