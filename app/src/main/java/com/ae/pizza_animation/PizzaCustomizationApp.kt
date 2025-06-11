@@ -1,36 +1,44 @@
 package com.ae.pizza_animation
 
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.material3.ripple
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.ui.graphics.Brush.Companion.radialGradient
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.random.Random
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import kotlin.math.abs
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.random.Random
 
 
 data class ToppingPieceAnimation(
@@ -43,14 +51,12 @@ data class ToppingPieceAnimation(
     val size: Float = 1f
 )
 
-// Enhanced Topping Animation State
 data class ToppingAnimationState(
     val topping: Topping,
     val pieces: List<ToppingPieceAnimation>,
     val isAnimating: Boolean = true
 )
 
-// Function to generate distributed positions for topping pieces
 fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
     val pieceCount = when (topping.id) {
         "basil" -> Random.nextInt(6, 10)
@@ -104,17 +110,26 @@ fun generateToppingPositions(topping: Topping): List<ToppingPieceAnimation> {
 data class Topping(
     val id: String,
     val name: String,
-    val resourceGetter: (Int) -> Int, // Function to get resource by index
-    val price: Double = 2.0
+    val image: Int, // Main display image
+    val resourceGetter: (Int) -> Int,
+    val price: Double = 2.0,
+    val isSelected: Boolean = false,
+    val ingredients: List<Int> = emptyList() // List of topping piece resources
 )
 
 data class Pizza(
     val id: String,
     val name: String,
+    val image: Int, // Main pizza image
     val baseImageRes: Int,
     val basePrice: Double,
-    val toppings: List<Topping> = emptyList()
-)
+    val size: PizzaSize = PizzaSize.MEDIUM,
+    val ingredients: List<Topping> = emptyList()
+) {
+    val totalPrice: Double
+        get() = (basePrice * size.priceMultiplier) +
+                ingredients.filter { it.isSelected }.sumOf { it.price }
+}
 
 private fun getBasilResource(index: Int): Int = when (index) {
     1 -> R.drawable.basil_1
@@ -197,48 +212,80 @@ private fun getSausageResource(index: Int): Int = when (index) {
 
 // Updated Sample Data
 val availableToppings = listOf(
-    Topping("basil", "Basil", ::getBasilResource),
-    Topping("broccoli", "Broccoli", ::getBroccoliResource),
-    Topping("onion", "Onion", ::getOnionResource),
-    Topping("mushroom", "Mushroom", ::getMushroomResource, 2.5),
-    Topping("sausage", "Sausage", ::getSausageResource, 3.0)
+    Topping(
+        id = "basil",
+        name = "Basil",
+        image = R.drawable.basil_1,
+        resourceGetter = ::getBasilResource,
+        ingredients = (1..10).map { getBasilResource(it) }
+    ),
+    Topping(
+        id = "broccoli",
+        name = "Broccoli",
+        image = R.drawable.broccoli_1,
+        resourceGetter = ::getBroccoliResource,
+        ingredients = (1..10).map { getBroccoliResource(it) }
+    ),
+    Topping(
+        id = "onion",
+        name = "Onion",
+        image = R.drawable.onion_1,
+        resourceGetter = ::getOnionResource,
+        ingredients = (1..10).map { getOnionResource(it) }
+    ),
+    Topping(
+        id = "mushroom",
+        name = "Mushroom",
+        image = R.drawable.mushroom_1,
+        resourceGetter = ::getMushroomResource,
+        price = 2.5,
+        ingredients = (1..10).map { getMushroomResource(it) }
+    ),
+    Topping(
+        id = "sausage",
+        name = "Sausage",
+        image = R.drawable.sausage_1,
+        resourceGetter = ::getSausageResource,
+        price = 3.0,
+        ingredients = (1..10).map { getSausageResource(it) }
+    )
 )
 
 val availablePizzas = listOf(
-    Pizza("margherita", "Margherita", getBreadResource(1), 17.0),
-    Pizza("pepperoni", "Pepperoni", getBreadResource(2), 19.0),
-    Pizza("vegetarian", "Vegetarian", getBreadResource(3), 18.0),
-    Pizza("hawaiian", "Hawaiian", getBreadResource(4), 20.0)
+    Pizza(
+        id = "margherita",
+        name = "Margherita",
+        image = getBreadResource(1),
+        baseImageRes = getBreadResource(1),
+        basePrice = 17.0,
+        ingredients = availableToppings
+    ),
+    Pizza(
+        id = "pepperoni",
+        name = "Pepperoni",
+        image = getBreadResource(2),
+        baseImageRes = getBreadResource(2),
+        basePrice = 19.0,
+        ingredients = availableToppings
+    ),
+    Pizza(
+        id = "vegetarian",
+        name = "Vegetarian",
+        image = getBreadResource(3),
+        baseImageRes = getBreadResource(3),
+        basePrice = 18.0,
+        ingredients = availableToppings
+    ),
+    Pizza(
+        id = "hawaiian",
+        name = "Hawaiian",
+        image = getBreadResource(4),
+        baseImageRes = getBreadResource(4),
+        basePrice = 20.0,
+        ingredients = availableToppings
+    )
 )
 
-
-@Composable
-fun ToppingOption(
-    topping: Topping,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(80.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) Color(0xFFF5F5F5) else Color.White)
-            .border(
-                width = if (isSelected) 2.dp else 1.dp,
-                color = if (isSelected) Color.Black else Color(0xFFEEEEEE),
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(topping.resourceGetter(1)), // Use first image for display
-            contentDescription = topping.name,
-            modifier = Modifier.size(50.dp),
-            contentScale = ContentScale.Fit
-        )
-    }
-}
 
 enum class PizzaSize(val scale: Float, val priceMultiplier: Double) {
     SMALL(0.7f, 0.8),
@@ -246,28 +293,127 @@ enum class PizzaSize(val scale: Float, val priceMultiplier: Double) {
     LARGE(1.0f, 1.5)
 }
 
+// Pizza Indicators
+@Composable
+fun PizzaIndicators(
+    pizzas: List<Pizza>,
+    currentIndex: Int
+) {
+    Row(
+        modifier = Modifier.padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        pizzas.forEachIndexed { index, _ ->
+            val width by animateDpAsState(
+                targetValue = if (index == currentIndex) 24.dp else 8.dp,
+                animationSpec = spring(
+                    dampingRatio = 0.8f,
+                    stiffness = 400f
+                ),
+                label = "indicatorWidth"
+            )
+
+            val color by animateColorAsState(
+                targetValue = if (index == currentIndex) Color.Black else Color.LightGray,
+                animationSpec = tween(200),
+                label = "indicatorColor"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(width = width, height = 8.dp)
+                    .background(
+                        color = color,
+                        shape = RoundedCornerShape(4.dp)
+                    )
+            )
+        }
+    }
+}
+
+
+
+@Composable
+fun SizeOption(
+    size: PizzaSize,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(45.dp)
+        ) {
+            // Background circle with shadow (only visible when selected)
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .size(45.dp)
+                        .shadow(4.dp, shape = CircleShape, clip = false)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
+
+            // Size text
+            Text(
+                text = when (size) {
+                    PizzaSize.SMALL -> "S"
+                    PizzaSize.MEDIUM -> "M"
+                    PizzaSize.LARGE -> "L"
+                },
+                fontSize = 25.sp,
+                color = Color.Black,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Optional: Size label
+        Text(
+            text = when (size) {
+                PizzaSize.SMALL -> "Small"
+                PizzaSize.MEDIUM -> "Medium"
+                PizzaSize.LARGE -> "Large"
+            },
+            fontSize = 12.sp,
+            color = if (isSelected) Color.Black else Color.Gray
+        )
+    }
+}
+
+
+
+@Composable
+fun PizzaSizeElement(
+    size: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = size,
+        fontSize = 25.sp,
+        color = Color.Black,
+        modifier = modifier,
+        textAlign = TextAlign.Center
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PizzaOrderingScreen() {
-    var selectedPizzaIndex by remember { mutableIntStateOf(0) }
-    val selectedPizza = availablePizzas[selectedPizzaIndex]
-    var selectedSize by remember { mutableStateOf(PizzaSize.MEDIUM) }
-    var selectedToppings by remember { mutableStateOf(setOf<Topping>()) }
-    var animatingToppings by remember { mutableStateOf(listOf<ToppingAnimationState>()) }
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { availablePizzas.size }
+    )
 
-    // Swipe animation states
-    var dragOffset by remember { mutableStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
+    var pizzas by remember { mutableStateOf(availablePizzas) }
 
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-
-    val totalPrice = remember(selectedPizza, selectedSize, selectedToppings) {
-        val basePrice = selectedPizza.basePrice * selectedSize.priceMultiplier
-        val toppingsPrice = selectedToppings.sumOf { it.price }
-        basePrice + toppingsPrice
-    }
+    // Get current pizza
+    val currentPizza = pizzas[pagerState.currentPage]
 
     Scaffold(
         topBar = {
@@ -302,75 +448,32 @@ fun PizzaOrderingScreen() {
                 .padding(paddingValues),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Pizza Display with Swipe Gesture
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(300.dp)
-                    .pointerInput(selectedPizzaIndex) {
-                        detectHorizontalDragGestures(
-                            onDragStart = {
-                                isDragging = true
-                            },
-                            onDragEnd = {
-                                isDragging = false
-                                scope.launch {
-                                    val threshold = with(density) { 20.dp.toPx() }
-
-                                    when {
-                                        dragOffset > threshold && selectedPizzaIndex > 0 -> {
-                                            // Swipe right - previous pizza
-                                            selectedPizzaIndex--
-                                            selectedToppings = emptySet()
-                                            animatingToppings = emptyList()
-                                        }
-
-                                        dragOffset < -threshold && selectedPizzaIndex < availablePizzas.size - 1 -> {
-                                            // Swipe left - next pizza
-                                            selectedPizzaIndex++
-                                            selectedToppings = emptySet()
-                                            animatingToppings = emptyList()
-                                        }
-                                    }
-
-                                    // Animate back to center
-                                    animate(
-                                        initialValue = dragOffset,
-                                        targetValue = 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = 0.8f,
-                                            stiffness = 300f
-                                        )
-                                    ) { value, _ ->
-                                        dragOffset = value
-                                    }
-                                }
-                            },
-                            onHorizontalDrag = { _, dragAmount ->
-                                dragOffset += dragAmount
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
+                    .fillMaxHeight(0.4f)
             ) {
-                // Pizza carousel
-                PizzaCarousel(
-                    pizzas = availablePizzas,
-                    selectedIndex = selectedPizzaIndex,
-                    size = selectedSize,
-                    selectedToppings = selectedToppings,
-                    animatingToppings = animatingToppings,
-                    dragOffset = dragOffset,
-                    isDragging = isDragging
+                Image(
+                    painter = painterResource(R.drawable.plate),
+                    contentDescription = "Plate image",
+                    modifier = Modifier.align(Alignment.Center)
+                )
+
+                // HorizontalPizzaPager (exactly like reference)
+                HorizontalPizzaPager(
+                    state = pagerState,
+                    pizzas = pizzas,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             // Price Display with simple animation
             val animatedPrice by animateFloatAsState(
-                targetValue = totalPrice.toFloat(),
+                targetValue = currentPizza.totalPrice.toFloat(),
                 animationSpec = tween(300),
+
                 label = "price"
             )
 
@@ -378,96 +481,83 @@ fun PizzaOrderingScreen() {
                 text = "$${String.format("%.0f", animatedPrice)}",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Black
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 32.dp),
+                color = Color.Black,
+                textAlign = TextAlign.Center
+
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Size Selector
+            // Size Selector - Using circular shape design
             Row(
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
-                PizzaSize.values().forEach { size ->
+                PizzaSize.entries.forEach { size ->
                     SizeOption(
                         size = size,
-                        isSelected = selectedSize == size,
-                        onClick = { selectedSize = size }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Customize Pizza Section
-            Text(
-                "CUSTOMIZE YOUR PIZZA",
-                fontSize = 14.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(start = 16.dp, bottom = 16.dp)
-            )
-
-            // Toppings Grid
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(availableToppings) { topping ->
-                    ToppingOption(
-                        topping = topping,
-                        isSelected = selectedToppings.contains(topping),
+                        isSelected = currentPizza.size == size,
                         onClick = {
-                            if (selectedToppings.contains(topping)) {
-                                selectedToppings = selectedToppings - topping
-                                animatingToppings = animatingToppings.filter { it.topping != topping }
-                            } else {
-                                selectedToppings = selectedToppings + topping
-                                // Generate positions for all pieces
-                                val pieces = generateToppingPositions(topping)
-                                val animationState = ToppingAnimationState(
-                                    topping = topping,
-                                    pieces = pieces,
-                                    isAnimating = true
-                                )
-                                animatingToppings = animatingToppings + animationState
-
-                                // Remove from animating list after animation completes
-                                scope.launch {
-                                    delay(1500) // Wait for all pieces to fall
-                                    animatingToppings = animatingToppings.map {
-                                        if (it.topping == topping) {
-                                            it.copy(isAnimating = false)
-                                        } else it
-                                    }
-                                }
+                            pizzas = pizzas.mapIndexed { index, pizza ->
+                                if (index == pagerState.currentPage) {
+                                    pizza.copy(size = size)
+                                } else pizza
                             }
                         }
                     )
                 }
             }
 
-            // Pizza Type Indicators
-            Row(
-                modifier = Modifier.padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Customize Pizza Section
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, bottom = 32.dp)
             ) {
-                availablePizzas.forEachIndexed { index, _ ->
-                    Box(
-                        modifier = Modifier
-                            .size(
-                                width = if (index == selectedPizzaIndex) 24.dp else 8.dp,
-                                height = 8.dp
-                            )
-                            .background(
-                                color = if (index == selectedPizzaIndex) Color.Black else Color.LightGray,
-                                shape = RoundedCornerShape(4.dp)
-                            )
+                Text(
+                    text = "CUSTOMIZE YOUR PIZZA",
+                    fontSize = 15.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+            }
+
+            // Toppings Row (matching reference layout)
+            LazyRow(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                itemsIndexed(currentPizza.ingredients) { droppingIndex, dropping ->
+                    DroppingSelectionElement(
+                        onDroppingClick = {
+                            pizzas = pizzas.mapIndexed { pizzaIndex, pizza ->
+                                if (pizzaIndex == pagerState.currentPage) {
+                                    val updatedIngredients =
+                                        pizza.ingredients.mapIndexed { ingredientIndex, ingredient ->
+                                            if (ingredientIndex == droppingIndex) {
+                                                ingredient.copy(isSelected = !ingredient.isSelected)
+                                            } else ingredient
+                                        }
+                                    pizza.copy(ingredients = updatedIngredients)
+                                } else pizza
+                            }
+                        },
+                        isSelected = dropping.isSelected,
+                        droppingImage = dropping.image,
+                        modifier = Modifier.size(55.dp)
                     )
                 }
             }
+
+            Spacer(Modifier.weight(1f))
+
+            // Pizza Type Indicators
+            PizzaIndicators(
+                pizzas = pizzas,
+                currentIndex = pagerState.currentPage
+            )
 
             // Add to Cart Button
             Button(
@@ -493,204 +583,247 @@ fun PizzaOrderingScreen() {
     }
 }
 
+// Enhanced ToppingOption with better animations and circular selection
 @Composable
-fun AnimatedToppingPiece(
+fun ToppingOption(
     topping: Topping,
-    pieceAnimation: ToppingPieceAnimation,
-    isAnimating: Boolean
+    isSelected: Boolean,
+    onClick: () -> Unit
 ) {
-    var hasStarted by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isAnimating) {
-        if (isAnimating) {
-            delay(pieceAnimation.startDelay)
-            hasStarted = true
-        }
-    }
-
-    val offsetY by animateFloatAsState(
-        targetValue = if (hasStarted) 0f else -500f,
-        animationSpec = spring(
-            dampingRatio = 0.6f,
-            stiffness = 200f
-        ),
-        label = "pieceFall"
-    )
-
     val scale by animateFloatAsState(
-        targetValue = if (hasStarted) 1f else 0f,
+        targetValue = if (isSelected) 1.05f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.8f,
+            dampingRatio = 0.7f,
             stiffness = 300f
         ),
-        label = "pieceScale"
+        label = "toppingScale"
     )
 
-    if (hasStarted || !isAnimating) {
-        Image(
-            painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
-            contentDescription = null,
-            modifier = Modifier
-                .size(35.dp * pieceAnimation.size)
-                .graphicsLayer {
-                    translationX = pieceAnimation.targetX
-                    translationY = pieceAnimation.targetY + offsetY
-                    rotationZ = pieceAnimation.rotation
-                    scaleX = scale * pieceAnimation.size
-                    scaleY = scale * pieceAnimation.size
-                    alpha = if (offsetY < -400f) 0f else 1f
-                }
-        )
-    }
-}
-
-@Composable
-fun PizzaOnly(
-    pizza: Pizza,
-    size: PizzaSize,
-    selectedToppings: Set<Topping>,
-    animatingToppings: List<ToppingAnimationState>,
-    horizontalOffset: Float,
-    alpha: Float
-) {
-    val pizzaScale by animateFloatAsState(
-        targetValue = size.scale,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 300f
-        ),
-        label = "pizzaScale"
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) Color.Black else Color(0xFFEEEEEE),
+        animationSpec = tween(200),
+        label = "borderColor"
     )
 
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                translationX = horizontalOffset
-                this.alpha = alpha
-            }
-            .scale(pizzaScale),
+            .size(80.dp)
+            .scale(scale)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isSelected) Color(0xFFF5F5F5) else Color.White)
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        // Pizza Base
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(topping.resourceGetter(1)),
+                contentDescription = topping.name,
+                modifier = Modifier.size(40.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = topping.name,
+                fontSize = 10.sp,
+                color = if (isSelected) Color.Black else Color.Gray,
+                maxLines = 1
+            )
+        }
+
+        // Selection indicator - circular
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn() + fadeIn(),
+            exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .offset(x = 4.dp, y = (-4).dp)
+                    .background(Color.Black, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color.White, CircleShape)
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+fun DroppingSelectionElement(
+    onDroppingClick: () -> Unit,
+    isSelected: Boolean,
+    droppingImage: Int,
+    modifier: Modifier = Modifier
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (isSelected) Color.Green.copy(alpha = 0.1f) else Color.Transparent,
+        animationSpec = tween(400),
+        label = "containerColor"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.1f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.7f,
+            stiffness = 300f
+        ),
+        label = "droppingScale"
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = modifier
+            .scale(scale)
+            .background(containerColor, shape = CircleShape)
+            .border(
+                width = if (isSelected) 2.dp else 0.dp,
+                color = if (isSelected) Color.Green else Color.Transparent,
+                shape = CircleShape
+            )
+    ) {
         Image(
-            painter = painterResource(pizza.baseImageRes),
-            contentDescription = null,
+            painter = painterResource(droppingImage),
+            contentDescription = "Pizza Dropping item",
             modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
+                .align(Alignment.Center)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = ripple(bounded = false), // Fixed: Use Material3 ripple
+                    onClick = onDroppingClick
+                )
+                .size(35.dp)
         )
 
-        // Static Toppings (already placed)
-        selectedToppings.forEach { topping ->
-            val animatingState = animatingToppings.find { it.topping == topping }
+        // Selection indicator dot
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn() + fadeIn(),
+            exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .background(Color.Green, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(Color.White, CircleShape)
+                )
+            }
+        }
+    }
+}
 
-            if (animatingState == null || !animatingState.isAnimating) {
-                // Show static pieces
-                val pieces = remember(topping) { generateToppingPositions(topping) }
-                pieces.forEach { piece ->
-                    key(topping.id, piece.id) {
-                        StaticToppingPiece(
-                            topping = topping,
-                            pieceAnimation = piece
-                        )
+
+@Composable
+fun HorizontalPizzaPager(
+    state: PagerState,
+    pizzas: List<Pizza>,
+    modifier: Modifier = Modifier
+) {
+    val pizzaSize = pizzas[state.targetPage].size
+
+    val pizzaScale by animateFloatAsState(
+        targetValue = when (pizzaSize) {
+            PizzaSize.LARGE -> 0.9f
+            PizzaSize.MEDIUM -> 0.8f
+            PizzaSize.SMALL -> 0.7f
+        },
+        animationSpec = tween(500),
+        label = "pizzaScale"
+    )
+
+    val droppingAppearanceScale by animateFloatAsState(
+        targetValue = when (pizzas[state.currentPage].size) {
+            PizzaSize.LARGE -> 0.9f
+            PizzaSize.MEDIUM -> 0.3f
+            PizzaSize.SMALL -> 0.2f
+        },
+        label = "droppingScale"
+    )
+
+    HorizontalPager(
+        state = state,
+        modifier = modifier,
+    ) { page ->
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .wrapContentSize()
+            ) {
+                Image(
+                    painter = painterResource(pizzas[page].image),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .scale(pizzaScale)
+                )
+
+                pizzas[page].ingredients.forEach { dropping ->
+                    dropping.ingredients.forEachIndexed { _, droppingImageRes ->
+                        val randomX = remember { Random.nextInt(-250, 250) }
+                        val randomY = remember { Random.nextInt(-250, 250) }
+
+                        AnimatedVisibility(
+                            visible = dropping.isSelected,
+                            enter = scaleIn(
+                                initialScale = 10f,
+                                animationSpec = tween(700)
+                            ) + fadeIn(),
+                            exit = ExitTransition.None,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset { IntOffset(randomX, randomY) }
+                                .scale(droppingAppearanceScale)
+                        ) {
+                            Image(
+                                painter = painterResource(droppingImageRes),
+                                contentDescription = "topping piece",
+                                modifier = Modifier.scale(pizzaScale)
+                            )
+                        }
                     }
                 }
             }
         }
-
-        // Animating Toppings
-        animatingToppings.filter { it.isAnimating }.forEach { animState ->
-            animState.pieces.forEach { piece ->
-                key(animState.topping.id, piece.id) {
-                    AnimatedToppingPiece(
-                        topping = animState.topping,
-                        pieceAnimation = piece,
-                        isAnimating = animState.isAnimating
-                    )
-                }
-            }
-        }
     }
 }
 
-fun generateGridBasedPositions(topping: Topping): List<ToppingPieceAnimation> {
-    val pieceCount = when (topping.id) {
-        "basil" -> Random.nextInt(6, 10)
-        "mushroom" -> Random.nextInt(5, 8)
-        "onion" -> Random.nextInt(8, 12)
-        "sausage" -> Random.nextInt(6, 9)
-        "broccoli" -> Random.nextInt(5, 8)
-        else -> 8
-    }
-
-    // Create a circular grid
-    val gridPoints = mutableListOf<Pair<Float, Float>>()
-    val rings = 3 // Number of concentric rings
-
-    for (ring in 1..rings) {
-        val radius = ring * 25f
-        val pointsInRing = ring * 4
-
-        for (i in 0 until pointsInRing) {
-            val angle = (i * 360f / pointsInRing) + Random.nextFloat() * 20f - 10f
-            val r = radius + Random.nextFloat() * 10f - 5f
-            val x = r * kotlin.math.cos(Math.toRadians(angle.toDouble())).toFloat()
-            val y = r * kotlin.math.sin(Math.toRadians(angle.toDouble())).toFloat()
-            gridPoints.add(x to y)
-        }
-    }
-
-    // Shuffle and take required number of points
-    return gridPoints.shuffled().take(pieceCount).mapIndexed { index, position ->
-        ToppingPieceAnimation(
-            id = index,
-            targetX = position.first,
-            targetY = position.second,
-            rotation = Random.nextFloat() * 360f,
-            resourceIndex = Random.nextInt(10) + 1,
-            startDelay = index * 30L,
-            size = Random.nextFloat() * 0.3f + 0.85f
-        )
-    }
-}
 
 @Composable
-fun StaticToppingPiece(
-    topping: Topping,
-    pieceAnimation: ToppingPieceAnimation
-) {
-    Image(
-        painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
-        contentDescription = null,
-        modifier = Modifier
-            .size(35.dp * pieceAnimation.size)
-            .graphicsLayer {
-                translationX = pieceAnimation.targetX
-                translationY = pieceAnimation.targetY
-                rotationZ = pieceAnimation.rotation
-            }
-    )
-}
-
-// Updated PizzaCarousel to handle only pizza movement
-@Composable
-fun PizzaCarousel(
+fun EnhancedPizzaCarousel(
+    pagerState: PagerState,
     pizzas: List<Pizza>,
-    selectedIndex: Int,
-    size: PizzaSize,
+    selectedSize: PizzaSize,
     selectedToppings: Set<Topping>,
-    animatingToppings: List<ToppingAnimationState>,
-    dragOffset: Float,
-    isDragging: Boolean
+    animatingToppings: List<ToppingAnimationState>
 ) {
-    val density = LocalDensity.current
-
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier.fillMaxSize()
     ) {
-        // Single fixed plate for all pizzas
+        // Fixed plate and shadow
         Box(
             modifier = Modifier.size(250.dp),
             contentAlignment = Alignment.Center
@@ -718,221 +851,193 @@ fun PizzaCarousel(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Pizza container that handles all pizzas
-            Box(
-                modifier = Modifier.fillMaxSize(0.8f),
-                contentAlignment = Alignment.Center
-            ) {
-                pizzas.forEachIndexed { index, pizza ->
-                    val offset =
-                        (index - selectedIndex) * with(density) { 250.dp.toPx() } + dragOffset
-                    val alpha =
-                        1f - (abs(offset) / with(density) { 250.dp.toPx() }).coerceIn(0f, 1f)
-
-                    // Only show pizzas that are visible or nearly visible
-                    if (abs(offset) < with(density) { 300.dp.toPx() }) {
-                        PizzaOnly(
-                            pizza = pizza,
-                            size = size,
-                            selectedToppings = if (index == selectedIndex) selectedToppings else emptySet(),
-                            animatingToppings = if (index == selectedIndex) animatingToppings else emptyList(),
-                            horizontalOffset = offset,
-                            alpha = alpha
-                        )
-                    }
+            // HorizontalPager for pizza navigation
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(0.8f)
+            ) { page ->
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PizzaWithToppings(
+                        pizza = pizzas[page],
+                        size = selectedSize,
+                        selectedToppings = if (page == pagerState.currentPage) selectedToppings else emptySet(),
+                        animatingToppings = if (page == pagerState.currentPage) animatingToppings else emptyList()
+                    )
                 }
             }
         }
     }
 }
 
-
-// Updated ToppingPiece with stable positioning
 @Composable
-fun ToppingPiece(
-    topping: Topping,
-    index: Int,
-    size: Float,
-    animationOffsetY: Float = 0f,
-    animationRotation: Float = 0f,
-    animationScale: Float = 1f
-) {
-    // Remember random values to prevent shaking
-    val randomAngle = remember { Random.nextFloat() * 360f }
-    val randomRadius = remember { Random.nextFloat() * 60f + 20f } // Random radius between 20-80
-    val randomRotation = remember { Random.nextFloat() * 360f }
-    val resourceIndex = remember { (Random.nextInt(10) + 1) }
-
-    // Calculate position based on random angle and radius
-    val offsetX = remember(randomAngle, randomRadius) {
-        randomRadius * kotlin.math.cos(Math.toRadians(randomAngle.toDouble())).toFloat()
-    }
-    val offsetY = remember(randomAngle, randomRadius) {
-        randomRadius * kotlin.math.sin(Math.toRadians(randomAngle.toDouble())).toFloat()
-    }
-
-    Image(
-        painter = painterResource(topping.resourceGetter(resourceIndex)),
-        contentDescription = null,
-        modifier = Modifier
-            .size(35.dp)
-            .graphicsLayer {
-                translationX = offsetX
-                translationY = offsetY + animationOffsetY
-                rotationZ = if (animationOffsetY != 0f) animationRotation else randomRotation
-                scaleX = animationScale
-                scaleY = animationScale
-            }
-    )
-}
-
-
-// Alternative: Create a more sophisticated topping distribution
-@Composable
-fun DistributedToppingPiece(
-    topping: Topping,
-    toppingIndex: Int,
-    pieceIndex: Int,
-    size: Float,
-    animationOffsetY: Float = 0f,
-    animationScale: Float = 1f
-) {
-    // Create zones for better distribution
-    val zone = remember(toppingIndex, pieceIndex) {
-        when (pieceIndex % 3) {
-            0 -> 0.3f to 0.5f  // Inner zone
-            1 -> 0.5f to 0.7f  // Middle zone
-            else -> 0.7f to 0.9f // Outer zone
-        }
-    }
-
-    val position = remember(toppingIndex, pieceIndex) {
-        val angle = Random.nextFloat() * 360f
-        val radiusPercent = Random.nextFloat() * (zone.second - zone.first) + zone.first
-        val radius = radiusPercent * 80f // Max radius of 80
-
-        val x = radius * kotlin.math.cos(Math.toRadians(angle.toDouble())).toFloat()
-        val y = radius * kotlin.math.sin(Math.toRadians(angle.toDouble())).toFloat()
-
-        Offset(x, y)
-    }
-
-    val rotation = remember { Random.nextFloat() * 360f }
-    val resourceIndex = remember { Random.nextInt(10) + 1 }
-    val sizeVariation = remember { Random.nextFloat() * 0.3f + 0.85f } // 0.85 to 1.15
-
-    Image(
-        painter = painterResource(topping.resourceGetter(resourceIndex)),
-        contentDescription = null,
-        modifier = Modifier
-            .size(35.dp * sizeVariation)
-            .graphicsLayer {
-                translationX = position.x
-                translationY = position.y + animationOffsetY
-                rotationZ = rotation
-                scaleX = animationScale
-                scaleY = animationScale
-            }
-    )
-}
-
-
-@Composable
-fun SizeOption(
-    size: PizzaSize,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            // Visual size indicator
-            Box(
-                modifier = Modifier
-                    .size(
-                        when (size) {
-                            PizzaSize.SMALL -> 20.dp
-                            PizzaSize.MEDIUM -> 24.dp
-                            PizzaSize.LARGE -> 28.dp
-                        }
-                    )
-                    .background(
-                        color = if (isSelected) Color.Black.copy(alpha = 0.1f) else Color.Transparent,
-                        shape = CircleShape
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (isSelected) Color.Black else Color.Gray,
-                        shape = CircleShape
-                    )
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = when (size) {
-                PizzaSize.SMALL -> "S"
-                PizzaSize.MEDIUM -> "M"
-                PizzaSize.LARGE -> "L"
-            },
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (isSelected) Color.Black else Color.Gray
-        )
-
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .size(4.dp)
-                    .background(Color.Black, CircleShape)
-            )
-        }
-    }
-}
-
-// Keep all other composables as they are...
-
-@Composable
-fun PizzaTypeOption(
+fun PizzaWithToppings(
     pizza: Pizza,
-    isSelected: Boolean,
-    onClick: () -> Unit
+    size: PizzaSize,
+    selectedToppings: Set<Topping>,
+    animatingToppings: List<ToppingAnimationState>
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val pizzaScale by animateFloatAsState(
+        targetValue = size.scale,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = 300f
+        ),
+        label = "pizzaScale"
+    )
+
+    val toppingScale by animateFloatAsState(
+        targetValue = when (size) {
+            PizzaSize.LARGE -> 0.3f
+            PizzaSize.MEDIUM -> 0.3f
+            PizzaSize.SMALL -> 0.2f
+        },
+        animationSpec = tween(500),
+        label = "toppingScale"
+    )
+
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .padding(8.dp)
+            .fillMaxSize()
+            .scale(pizzaScale),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
+        // Pizza Base
+        Image(
+            painter = painterResource(pizza.baseImageRes),
+            contentDescription = pizza.name,
             modifier = Modifier
-                .size(60.dp)
+                .fillMaxSize()
                 .clip(CircleShape)
-                .background(if (isSelected) Color(0xFFF5F5F5) else Color.White)
-                .border(
-                    width = if (isSelected) 2.dp else 0.dp,
-                    color = Color.Black,
-                    shape = CircleShape
-                )
-        ) {
-            Image(
-                painter = painterResource(pizza.baseImageRes),
-                contentDescription = pizza.name,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                contentScale = ContentScale.Crop
+        )
+
+        // Static Toppings (already placed)
+        selectedToppings.forEach { topping ->
+            val animatingState = animatingToppings.find { it.topping.id == topping.id }
+
+            if (animatingState == null || !animatingState.isAnimating) {
+                // Show static pieces
+                val pieces = remember(topping.id) { generateToppingPositions(topping) }
+                pieces.forEach { piece ->
+                    key(topping.id, piece.id) {
+                        StaticToppingPiece(
+                            topping = topping,
+                            pieceAnimation = piece,
+                            scale = toppingScale
+                        )
+                    }
+                }
+            }
+        }
+
+        // Animating Toppings
+        animatingToppings.filter { it.isAnimating }.forEach { animState ->
+            animState.pieces.forEach { piece ->
+                key(animState.topping.id, piece.id) {
+                    AnimatedToppingPiece(
+                        topping = animState.topping,
+                        pieceAnimation = piece,
+                        isAnimating = animState.isAnimating,
+                        scale = toppingScale
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimatedToppingPiece(
+    topping: Topping,
+    pieceAnimation: ToppingPieceAnimation,
+    isAnimating: Boolean,
+    scale: Float
+) {
+    var hasStarted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isAnimating) {
+        if (isAnimating) {
+            delay(pieceAnimation.startDelay)
+            hasStarted = true
+        }
+    }
+
+    val offsetY by animateFloatAsState(
+        targetValue = if (hasStarted) 0f else -500f,
+        animationSpec = spring(
+            dampingRatio = 0.6f,
+            stiffness = 200f
+        ),
+        label = "pieceFall"
+    )
+
+    val pieceScale by animateFloatAsState(
+        targetValue = if (hasStarted) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = 300f
+        ),
+        label = "pieceScale"
+    )
+
+    val rotation by animateFloatAsState(
+        targetValue = if (hasStarted) pieceAnimation.rotation else pieceAnimation.rotation - 180f,
+        animationSpec = spring(
+            dampingRatio = 0.7f,
+            stiffness = 150f
+        ),
+        label = "pieceRotation"
+    )
+
+    AnimatedVisibility(
+        visible = hasStarted || !isAnimating,
+        enter = scaleIn(
+            initialScale = 10f,
+            animationSpec = tween(700)
+        ) + fadeIn(),
+        exit = ExitTransition.None,
+        modifier = Modifier.offset {
+            IntOffset(
+                pieceAnimation.targetX.toInt(),
+                (pieceAnimation.targetY + offsetY).toInt()
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = pizza.name,
-            fontSize = 12.sp,
-            color = if (isSelected) Color.Black else Color.Gray
+    ) {
+        Image(
+            painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
+            contentDescription = "topping piece",
+            modifier = Modifier
+                .size(35.dp * pieceAnimation.size)
+                .scale(scale)
+                .graphicsLayer {
+                    rotationZ = rotation
+                    scaleX = pieceScale * pieceAnimation.size
+                    scaleY = pieceScale * pieceAnimation.size
+                    alpha = if (offsetY < -400f) 0f else 1f
+                }
         )
     }
 }
+
+@Composable
+fun StaticToppingPiece(
+    topping: Topping,
+    pieceAnimation: ToppingPieceAnimation,
+    scale: Float
+) {
+    Image(
+        painter = painterResource(topping.resourceGetter(pieceAnimation.resourceIndex)),
+        contentDescription = "topping piece",
+        modifier = Modifier
+            .size(35.dp * pieceAnimation.size)
+            .scale(scale)
+            .graphicsLayer {
+                translationX = pieceAnimation.targetX
+                translationY = pieceAnimation.targetY
+                rotationZ = pieceAnimation.rotation
+            }
+    )
+}
+
